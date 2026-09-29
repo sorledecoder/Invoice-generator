@@ -1,0 +1,757 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1">
+<title>Ledger — Invoice Generator</title>
+<style>
+  :root{
+    --paper:#FBF9F4;
+    --ink:#1F2E28;
+    --ink-soft:#4B5B54;
+    --gold:#A9772F;
+    --gold-soft:#E9DCC3;
+    --line:#D8D2C2;
+    --green:#1F4B3F;
+    --danger:#9B3B2E;
+    --shadow: 0 8px 24px rgba(31,46,40,0.12);
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    background:#EFEAE0;
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    color:var(--ink);
+    -webkit-font-smoothing:antialiased;
+    padding-bottom:60px;
+  }
+  .display{font-family:Georgia,"Times New Roman",serif;}
+
+  /* Toolbar */
+  .toolbar{
+    position:sticky; top:0; z-index:50;
+    background:var(--green);
+    color:#F4EFE3;
+    display:flex; align-items:center; justify-content:space-between;
+    padding:12px 16px;
+    box-shadow:0 2px 10px rgba(0,0,0,0.15);
+  }
+  .toolbar .brand{
+    font-family:Georgia,serif; font-weight:700; font-size:17px; letter-spacing:0.3px;
+    display:flex; align-items:center; gap:8px;
+  }
+  .toolbar .brand .dot{width:8px;height:8px;border-radius:50%;background:var(--gold);}
+  .toolbar-actions{display:flex; gap:8px; flex-wrap:wrap;}
+  .btn{
+    border:1px solid transparent;
+    padding:9px 14px;
+    border-radius:7px;
+    font-size:13px;
+    font-weight:600;
+    cursor:pointer;
+    font-family:inherit;
+    transition:transform .08s ease, background .15s ease;
+  }
+  .btn:active{transform:scale(0.97);}
+  .btn-gold{background:var(--gold); color:#2A2013;}
+  .btn-ghost{background:transparent; color:#F4EFE3; border-color:rgba(244,239,227,0.4);}
+  .btn-outline{background:transparent; border-color:var(--line); color:var(--ink);}
+  .btn-small{padding:5px 9px; font-size:12px; border-radius:6px;}
+  .btn-danger-outline{background:transparent; border:1px solid var(--danger); color:var(--danger);}
+
+  /* Sheet (the invoice itself, this is also the "preview") */
+  .sheet-wrap{ max-width:720px; margin:20px auto; padding:0 14px; }
+  .sheet{
+    background:var(--paper);
+    box-shadow:var(--shadow);
+    border-radius:10px;
+    padding:28px 22px;
+    position:relative;
+  }
+  .sheet::before{
+    content:"";
+    position:absolute; top:0; left:0; right:0; height:6px;
+    background:linear-gradient(90deg,var(--green),var(--gold));
+    border-radius:10px 10px 0 0;
+  }
+
+  /* Header block */
+  .head{display:flex; justify-content:space-between; gap:18px; margin-top:14px; flex-wrap:wrap;}
+  .biz{flex:1; min-width:200px;}
+  .logo-box{
+    width:76px; height:76px; border-radius:10px;
+    border:1.5px dashed var(--line);
+    display:flex; align-items:center; justify-content:center;
+    overflow:hidden; cursor:pointer; margin-bottom:10px;
+    background:#fff; flex-shrink:0;
+    font-size:11px; color:var(--ink-soft); text-align:center; line-height:1.3; padding:4px;
+  }
+  .logo-box img{width:100%; height:100%; object-fit:contain;}
+  .biz-name{
+    font-size:22px; font-weight:700; outline:none;
+    border-bottom:1px solid transparent; padding:2px 0;
+  }
+  .biz-addr{
+    font-size:13px; color:var(--ink-soft); outline:none; margin-top:4px;
+    min-height:36px; border-bottom:1px solid transparent; line-height:1.5;
+  }
+  [contenteditable]:hover, [contenteditable]:focus{border-bottom:1px solid var(--line);}
+  [contenteditable]:empty:before{content:attr(data-ph); color:#A9A190;}
+
+  .meta{text-align:right; min-width:170px;}
+  .meta .inv-title{
+    font-family:Georgia,serif; font-size:26px; font-weight:700; color:var(--green);
+    letter-spacing:1px; margin-bottom:8px;
+  }
+  .meta-row{display:flex; justify-content:flex-end; gap:8px; font-size:13px; margin-top:4px; align-items:baseline;}
+  .meta-row label{color:var(--ink-soft); white-space:nowrap;}
+  .meta-row [contenteditable]{outline:none; font-weight:600; min-width:70px; text-align:right; border-bottom:1px solid transparent;}
+
+  hr.rule{border:none; border-top:1px solid var(--line); margin:20px 0;}
+
+  /* Bill to */
+  .billto-label{font-size:11px; letter-spacing:1.5px; text-transform:uppercase; color:var(--gold); font-weight:700; margin-bottom:6px;}
+  .cust-name{font-size:16px; font-weight:700; outline:none; border-bottom:1px solid transparent;}
+  .cust-addr{font-size:13px; color:var(--ink-soft); outline:none; margin-top:3px; min-height:32px; border-bottom:1px solid transparent; line-height:1.5;}
+
+  /* Items table */
+  .items-label{font-size:11px; letter-spacing:1.5px; text-transform:uppercase; color:var(--gold); font-weight:700; margin:22px 0 8px;}
+  table.items{width:100%; border-collapse:collapse; font-size:13px;}
+  table.items thead th{
+    text-align:left; font-size:11px; text-transform:uppercase; letter-spacing:0.5px;
+    color:#fff; background:var(--green); padding:8px 6px; font-weight:700;
+  }
+  table.items thead th.num{text-align:right;}
+  table.items tbody td{padding:7px 6px; border-bottom:1px solid var(--line); vertical-align:top;}
+  table.items tbody tr:last-child td{border-bottom:1px solid var(--line);}
+  .col-sn{width:26px; text-align:center; color:var(--ink-soft); padding-top:9px;}
+  .col-desc{width:auto;}
+  .col-qty{width:52px;}
+  .col-rate{width:70px;}
+  .col-amt{width:78px;}
+  .col-del{width:26px;}
+  table.items input[type=text], table.items input[type=number]{
+    width:100%; border:none; background:transparent; font-size:13px; font-family:inherit;
+    outline:none; padding:3px 2px; border-radius:4px; color:var(--ink);
+  }
+  table.items input[type=number]{text-align:right;}
+  table.items input:focus{background:var(--gold-soft);}
+  .amt-cell{text-align:right; font-weight:600; padding-top:9px;}
+  .del-row{
+    background:transparent; border:none; color:var(--danger); cursor:pointer;
+    font-size:15px; line-height:1; padding:6px 4px;
+  }
+  .add-row-btn{
+    margin-top:8px; font-size:12.5px; color:var(--green); background:none; border:1px dashed var(--line);
+    padding:7px 10px; border-radius:6px; cursor:pointer; width:100%; font-weight:600;
+  }
+
+  /* Totals */
+  .totals{margin-top:16px; display:flex; justify-content:flex-end;}
+  .totals-box{width:230px; font-size:13.5px;}
+  .totals-row{display:flex; justify-content:space-between; padding:5px 0;}
+  .totals-row.vat-toggle{align-items:center; border-top:1px solid var(--line); margin-top:4px; padding-top:8px;}
+  .totals-row .lbl{color:var(--ink-soft); display:flex; align-items:center; gap:6px;}
+  .vat-rate-input{
+    width:42px; border:none; border-bottom:1px solid var(--line); background:transparent;
+    text-align:right; font-size:12.5px; padding:1px 2px; outline:none;
+  }
+  .totals-row.total{
+    border-top:2px solid var(--green); margin-top:6px; padding-top:9px;
+    font-size:16px; font-weight:800; color:var(--green);
+  }
+  .currency-sym{outline:none; border-bottom:1px solid transparent;}
+
+  /* Payment / thanks */
+  .block-label{font-size:11px; letter-spacing:1.5px; text-transform:uppercase; color:var(--gold); font-weight:700; margin:22px 0 6px;}
+  .payment-field{font-size:13px; outline:none; border-bottom:1px solid transparent; min-height:20px;}
+  .thanks{
+    text-align:center; font-family:Georgia,serif; font-style:italic; color:var(--green);
+    font-size:14.5px; margin:26px 0 8px; padding:12px 0; border-top:1px dashed var(--line); border-bottom:1px dashed var(--line);
+  }
+
+  /* Signature */
+  .sig-wrap{margin-top:22px; display:flex; gap:18px; flex-wrap:wrap;}
+  .sig-pad-col{flex:1; min-width:220px;}
+  canvas#sigPad{
+    width:100%; height:120px; background:#fff; border:1px solid var(--line); border-radius:8px; touch-action:none;
+    display:block;
+  }
+  .sig-controls{display:flex; justify-content:space-between; align-items:center; margin-top:6px;}
+  .sig-hint{font-size:11px; color:var(--ink-soft);}
+  .sig-meta{display:flex; flex-direction:column; gap:10px; min-width:160px;}
+  .sig-meta-field label{font-size:11px; color:var(--ink-soft); text-transform:uppercase; letter-spacing:0.5px; display:block; margin-bottom:3px;}
+  .sig-meta-field input{
+    width:100%; border:none; border-bottom:1px solid var(--line); background:transparent;
+    font-size:13px; padding:4px 2px; outline:none; font-family:inherit;
+  }
+
+  /* Preview (locked) mode */
+  .locked [contenteditable]{pointer-events:none;}
+  .locked .no-edit-hide{display:none !important;}
+  .locked table.items input{pointer-events:none; background:transparent !important;}
+
+  footer.hint{max-width:720px; margin:0 auto; padding:0 18px; color:#6b6255; font-size:12px; text-align:center; margin-top:4px;}
+
+  /* History overlay */
+  .hist-overlay{
+    position:fixed; inset:0; background:rgba(20,26,22,0.55); z-index:100;
+    display:none; align-items:flex-end; justify-content:center;
+  }
+  .hist-overlay.open{display:flex;}
+  .hist-panel{
+    background:var(--paper); width:100%; max-width:520px; max-height:78vh;
+    border-radius:14px 14px 0 0; padding:16px 16px 18px; overflow-y:auto;
+    box-shadow:0 -8px 30px rgba(0,0,0,0.3);
+  }
+  .hist-head{display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; position:sticky; top:0; background:var(--paper); padding-bottom:6px;}
+  .hist-empty{color:var(--ink-soft); font-size:13px; padding:20px 4px; text-align:center;}
+  .hist-row{
+    display:flex; justify-content:space-between; align-items:center; gap:10px;
+    padding:10px 8px; border-bottom:1px solid var(--line);
+  }
+  .hist-row:last-child{border-bottom:none;}
+  .hist-row-info{flex:1; min-width:0;}
+  .hist-row-info .hi-top{font-weight:700; font-size:13.5px; display:flex; gap:8px; align-items:baseline;}
+  .hist-row-info .hi-top .hi-total{color:var(--green); font-weight:800;}
+  .hist-row-info .hi-sub{font-size:12px; color:var(--ink-soft); margin-top:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+  .hist-row-actions{display:flex; gap:6px; flex-shrink:0;}
+
+  @media (max-width:480px){
+    .toolbar{padding:10px 12px;}
+    .toolbar .brand span.label{display:none;}
+    .head{flex-direction:column;}
+    .meta{text-align:left;}
+    .meta-row{justify-content:flex-start;}
+    .meta-row [contenteditable]{text-align:left;}
+    .totals{justify-content:stretch;}
+    .totals-box{width:100%;}
+  }
+
+  /* Print / PDF export styling */
+  @media print{
+    body{background:#fff; padding:0;}
+    .toolbar, footer.hint, .no-print{display:none !important;}
+    .sheet-wrap{margin:0; padding:0; max-width:none;}
+    .sheet{box-shadow:none; border-radius:0; padding:14px 6px;}
+    .sheet::before{display:none;}
+    table.items thead th{-webkit-print-color-adjust:exact; print-color-adjust:exact;}
+    .del-row, .add-row-btn{display:none !important;}
+    canvas#sigPad{border:none;}
+    [contenteditable]{border-bottom:none !important;}
+  }
+</style>
+</head>
+<body>
+
+  <div class="toolbar no-print">
+    <div class="brand"><span class="dot"></span>Ledger<span class="label">&nbsp;Invoice</span></div>
+    <div class="toolbar-actions">
+      <button class="btn btn-ghost" id="newBtn">New</button>
+      <button class="btn btn-ghost" id="historyBtn">History</button>
+      <button class="btn btn-ghost" id="previewBtn">Preview</button>
+      <button class="btn btn-outline" id="saveBtn" style="background:#F4EFE3;">Save</button>
+      <button class="btn btn-gold" id="exportBtn">Export PDF</button>
+    </div>
+  </div>
+
+  <div class="hist-overlay no-print" id="histOverlay">
+    <div class="hist-panel">
+      <div class="hist-head">
+        <span class="display" style="font-weight:700; font-size:16px;">Saved Invoices</span>
+        <button class="btn btn-small btn-outline" id="histCloseBtn">Close</button>
+      </div>
+      <div id="histList" class="hist-list"></div>
+      <div id="histEmpty" class="hist-empty" style="display:none;">No saved invoices yet. Fill one in and tap <b>Save</b>.</div>
+    </div>
+  </div>
+
+  <div class="sheet-wrap">
+    <div class="sheet" id="sheet">
+
+      <!-- Header -->
+      <div class="head">
+        <div class="biz">
+          <div class="logo-box no-edit-hide" id="logoBox">Tap to add logo</div>
+          <img id="logoImg" style="display:none; width:76px; height:76px; object-fit:contain; border-radius:10px; margin-bottom:10px;" alt="Business logo">
+          <input type="file" id="logoInput" accept="image/*" style="display:none;">
+          <div class="biz-name display" contenteditable="true" data-ph="Your Business Name">Your Business Name</div>
+          <div class="biz-addr" contenteditable="true" data-ph="Business address, city, phone, email">123 Market Street, Nairobi, Kenya&#10;+254 700 000 000 · hello@yourbusiness.com</div>
+        </div>
+        <div class="meta">
+          <div class="inv-title">INVOICE</div>
+          <div class="meta-row"><label>No.</label><span contenteditable="true" id="invNum">INV-0001</span></div>
+          <div class="meta-row"><label>Issued</label><span contenteditable="true" id="invDate"></span></div>
+        </div>
+      </div>
+
+      <hr class="rule">
+
+      <!-- Bill to -->
+      <div class="billto-label">Bill To</div>
+      <div class="cust-name" contenteditable="true" data-ph="Customer name">Customer Name</div>
+      <div class="cust-addr" contenteditable="true" data-ph="Customer address">Customer address, city, country</div>
+
+      <!-- Items -->
+      <div class="items-label">Invoice Details</div>
+      <table class="items">
+        <thead>
+          <tr>
+            <th class="col-sn">#</th>
+            <th class="col-desc">Description</th>
+            <th class="col-qty num">Qty</th>
+            <th class="col-rate num">Rate</th>
+            <th class="col-amt num">Amount</th>
+            <th class="col-del no-edit-hide"></th>
+          </tr>
+        </thead>
+        <tbody id="itemsBody"></tbody>
+      </table>
+      <button class="add-row-btn no-edit-hide no-print" id="addRowBtn">+ Add line item</button>
+
+      <!-- Totals -->
+      <div class="totals">
+        <div class="totals-box">
+          <div class="totals-row">
+            <span class="lbl">Subtotal</span>
+            <span><span class="currency-sym" contenteditable="true" id="currencySym1">₦</span><span id="subtotalOut">0.00</span></span>
+          </div>
+          <div class="totals-row vat-toggle">
+            <span class="lbl">
+              <input type="checkbox" id="vatToggle">
+              Apply VAT
+              <input type="number" id="vatRate" class="vat-rate-input" value="7.5" min="0" step="0.1">%
+            </span>
+            <span><span class="currency-sym" id="vatCurrencySym">₦</span><span id="vatOut">0.00</span></span>
+          </div>
+          <div class="totals-row total">
+            <span>TOTAL</span>
+            <span><span class="currency-sym" contenteditable="true" id="currencySym2">₦</span><span id="totalOut">0.00</span></span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Payment -->
+      <div class="block-label">Payment Method</div>
+      <div class="payment-field" contenteditable="true" data-ph="e.g. Bank transfer — Acc No. 0000000000, Bank Name">Bank transfer — Acc No. 0000000000, Bank Name</div>
+
+      <!-- Thank you -->
+      <div class="thanks">Thank you for doing business with us.</div>
+
+      <!-- Signature -->
+      <div class="sig-wrap">
+        <div class="sig-pad-col">
+          <div class="block-label" style="margin-top:0;">Signature</div>
+          <canvas id="sigPad"></canvas>
+          <div class="sig-controls no-print">
+            <span class="sig-hint">Sign with your finger or mouse</span>
+            <button class="btn btn-small btn-outline no-edit-hide" id="clearSigBtn">Clear</button>
+          </div>
+        </div>
+        <div class="sig-meta">
+          <div class="sig-meta-field">
+            <label>Signed by</label>
+            <input type="text" id="signerName" placeholder="Full name">
+          </div>
+          <div class="sig-meta-field">
+            <label>Date</label>
+            <input type="date" id="signerDate">
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+  <footer class="hint no-print">Works fully offline. Save this file to your device and open it anytime — no internet needed. Your in-progress invoice is kept automatically; tap <b>Save</b> to add it to <b>History</b>, and <b>Export PDF</b> to print or save it as a PDF.<br> <h4>Designed by Akees</h4></footer>
+
+<script>
+(function(){
+  const itemsBody = document.getElementById('itemsBody');
+  let rowCount = 0;
+
+  function currency(n){
+    return (Math.round(n*100)/100).toLocaleString(undefined,{minimumFractionDigits:2, maximumFractionDigits:2});
+  }
+
+  function recalc(){
+    let subtotal = 0;
+    itemsBody.querySelectorAll('tr').forEach(function(tr){
+      const qty = parseFloat(tr.querySelector('.qty-input').value) || 0;
+      const rate = parseFloat(tr.querySelector('.rate-input').value) || 0;
+      const amount = qty * rate;
+      tr.querySelector('.amt-val').textContent = currency(amount);
+      subtotal += amount;
+    });
+    const vatOn = document.getElementById('vatToggle').checked;
+    const vatRate = parseFloat(document.getElementById('vatRate').value) || 0;
+    const vat = vatOn ? subtotal * (vatRate/100) : 0;
+    const total = subtotal + vat;
+    document.getElementById('subtotalOut').textContent = currency(subtotal);
+    document.getElementById('vatOut').textContent = currency(vat);
+    document.getElementById('totalOut').textContent = currency(total);
+  }
+
+  function addRow(desc, qty, rate){
+    rowCount++;
+    const tr = document.createElement('tr');
+    tr.innerHTML =
+      '<td class="col-sn">'+rowCount+'</td>'+
+      '<td class="col-desc"><input type="text" class="desc-input" placeholder="Item description" value="'+(desc||'')+'"></td>'+
+      '<td class="col-qty"><input type="number" class="qty-input" min="0" step="1" value="'+(qty!=null?qty:1)+'"></td>'+
+      '<td class="col-rate"><input type="number" class="rate-input" min="0" step="0.01" value="'+(rate!=null?rate:0)+'"></td>'+
+      '<td class="col-amt amt-cell"><span class="amt-val">0.00</span></td>'+
+      '<td class="col-del no-edit-hide no-print"><button class="del-row" title="Remove row">&times;</button></td>';
+    itemsBody.appendChild(tr);
+    tr.querySelector('.qty-input').addEventListener('input', recalc);
+    tr.querySelector('.rate-input').addEventListener('input', recalc);
+    tr.querySelector('.del-row').addEventListener('click', function(){
+      tr.remove();
+      renumber();
+      recalc();
+    });
+    recalc();
+  }
+
+  function renumber(){
+    let i = 0;
+    itemsBody.querySelectorAll('tr').forEach(function(tr){
+      i++;
+      tr.querySelector('.col-sn').textContent = i;
+    });
+    rowCount = i;
+  }
+
+  document.getElementById('addRowBtn').addEventListener('click', function(){
+    addRow('', 1, 0);
+  });
+  document.getElementById('vatToggle').addEventListener('change', recalc);
+  document.getElementById('vatRate').addEventListener('input', recalc);
+
+  // seed with a few starter rows
+  addRow('Sample product or service', 1, 0);
+  addRow('', 1, 0);
+
+  // sync the two currency symbol spans
+  const cs1 = document.getElementById('currencySym1');
+  const cs2 = document.getElementById('currencySym2');
+  const vatCs = document.getElementById('vatCurrencySym');
+  function syncCurrency(src, dst){
+    src.addEventListener('input', function(){
+      const val = src.textContent || '₦';
+      dst.textContent = val;
+      vatCs.textContent = val;
+    });
+  }
+  syncCurrency(cs1, cs2);
+  syncCurrency(cs2, cs1);
+
+  // default invoice date = today
+  const dateSpan = document.getElementById('invDate');
+  function todayStr(){
+    const d = new Date();
+    return d.toLocaleDateString(undefined,{year:'numeric', month:'short', day:'numeric'});
+  }
+  dateSpan.textContent = todayStr();
+  document.getElementById('signerDate').valueAsDate = new Date();
+
+  // Logo upload
+  const logoBox = document.getElementById('logoBox');
+  const logoImg = document.getElementById('logoImg');
+  const logoInput = document.getElementById('logoInput');
+  logoBox.addEventListener('click', function(){ logoInput.click(); });
+  logoInput.addEventListener('change', function(e){
+    const file = e.target.files[0];
+    if(!file) return;
+    const reader = new FileReader();
+    reader.onload = function(ev){
+      logoImg.src = ev.target.result;
+      logoImg.style.display = 'block';
+      logoBox.style.display = 'none';
+    };
+    reader.readAsDataURL(file);
+  });
+
+  // Signature pad
+  const canvas = document.getElementById('sigPad');
+  const ctx = canvas.getContext('2d');
+  let drawing = false;
+  let hasSig = false;
+
+  function resizeCanvas(){
+    const ratio = window.devicePixelRatio || 1;
+    const rect = canvas.getBoundingClientRect();
+    const prevData = hasSig ? canvas.toDataURL() : null;
+    canvas.width = rect.width * ratio;
+    canvas.height = rect.height * ratio;
+    ctx.scale(ratio, ratio);
+    ctx.lineWidth = 2;
+    ctx.lineCap = 'round';
+    ctx.strokeStyle = '#1F2E28';
+    if(prevData){
+      const img = new Image();
+      img.onload = function(){ ctx.drawImage(img, 0, 0, rect.width, rect.height); };
+      img.src = prevData;
+    }
+  }
+  window.addEventListener('resize', resizeCanvas);
+  setTimeout(resizeCanvas, 50);
+
+  function getPos(e){
+    const rect = canvas.getBoundingClientRect();
+    const point = e.touches ? e.touches[0] : e;
+    return { x: point.clientX - rect.left, y: point.clientY - rect.top };
+  }
+  function start(e){
+    drawing = true; hasSig = true;
+    const p = getPos(e);
+    ctx.beginPath();
+    ctx.moveTo(p.x, p.y);
+    e.preventDefault();
+  }
+  function move(e){
+    if(!drawing) return;
+    const p = getPos(e);
+    ctx.lineTo(p.x, p.y);
+    ctx.stroke();
+    e.preventDefault();
+  }
+  function end(){ drawing = false; }
+
+  canvas.addEventListener('mousedown', start);
+  canvas.addEventListener('mousemove', move);
+  window.addEventListener('mouseup', end);
+  canvas.addEventListener('touchstart', start, {passive:false});
+  canvas.addEventListener('touchmove', move, {passive:false});
+  canvas.addEventListener('touchend', end);
+
+  document.getElementById('clearSigBtn').addEventListener('click', function(){
+    const rect = canvas.getBoundingClientRect();
+    ctx.clearRect(0,0,rect.width,rect.height);
+    hasSig = false;
+  });
+
+  // Preview / edit toggle
+  const previewBtn = document.getElementById('previewBtn');
+  const sheet = document.getElementById('sheet');
+  let locked = false;
+  previewBtn.addEventListener('click', function(){
+    locked = !locked;
+    sheet.classList.toggle('locked', locked);
+    previewBtn.textContent = locked ? 'Edit' : 'Preview';
+  });
+
+  // Export to PDF (native print)
+  document.getElementById('exportBtn').addEventListener('click', function(){
+    window.print();
+  });
+
+  // ---------- Persistent storage (browser localStorage — works fully offline once this file is saved to your device) ----------
+  const LS_INVOICES = 'ledger_invoices_v1';
+  const LS_DRAFT = 'ledger_draft_v1';
+  let storageAvailable = true;
+  try{
+    const t = '__ledger_test__';
+    localStorage.setItem(t,'1');
+    localStorage.removeItem(t);
+  }catch(e){ storageAvailable = false; }
+
+  function readInvoices(){
+    if(!storageAvailable) return {};
+    try{ return JSON.parse(localStorage.getItem(LS_INVOICES) || '{}'); }
+    catch(e){ return {}; }
+  }
+  function writeInvoices(obj){
+    if(!storageAvailable) return;
+    localStorage.setItem(LS_INVOICES, JSON.stringify(obj));
+  }
+
+  function gatherData(){
+    const items = [];
+    itemsBody.querySelectorAll('tr').forEach(function(tr){
+      items.push({
+        desc: tr.querySelector('.desc-input').value,
+        qty: tr.querySelector('.qty-input').value,
+        rate: tr.querySelector('.rate-input').value
+      });
+    });
+    let sigData = null;
+    if(hasSig){
+      try{ sigData = canvas.toDataURL(); }catch(e){ sigData = null; }
+    }
+    return {
+      invNum: document.getElementById('invNum').textContent.trim(),
+      invDate: dateSpan.textContent.trim(),
+      businessName: document.querySelector('.biz-name').textContent,
+      businessAddr: document.querySelector('.biz-addr').innerHTML,
+      logoSrc: (logoImg.style.display !== 'none') ? logoImg.src : null,
+      custName: document.querySelector('.cust-name').textContent,
+      custAddr: document.querySelector('.cust-addr').innerHTML,
+      items: items,
+      vatOn: document.getElementById('vatToggle').checked,
+      vatRate: document.getElementById('vatRate').value,
+      currency: cs1.textContent || '₦',
+      payment: document.querySelector('.payment-field').innerHTML,
+      signerName: document.getElementById('signerName').value,
+      signerDate: document.getElementById('signerDate').value,
+      sigData: sigData,
+      total: document.getElementById('totalOut').textContent,
+      savedAt: Date.now()
+    };
+  }
+
+  function applyData(data){
+    itemsBody.innerHTML = '';
+    rowCount = 0;
+    (data.items && data.items.length ? data.items : [{desc:'',qty:1,rate:0}]).forEach(function(it){
+      addRow(it.desc, it.qty, it.rate);
+    });
+    document.getElementById('invNum').textContent = data.invNum || 'INV-0001';
+    dateSpan.textContent = data.invDate || todayStr();
+    document.querySelector('.biz-name').textContent = data.businessName || 'Your Business Name';
+    document.querySelector('.biz-addr').innerHTML = data.businessAddr || '';
+    document.querySelector('.cust-name').textContent = data.custName || 'Customer Name';
+    document.querySelector('.cust-addr').innerHTML = data.custAddr || '';
+    document.getElementById('vatToggle').checked = !!data.vatOn;
+    document.getElementById('vatRate').value = data.vatRate != null ? data.vatRate : 7.5;
+    cs1.textContent = data.currency || '₦';
+    cs2.textContent = data.currency || '₦';
+    vatCs.textContent = data.currency || '₦';
+    document.querySelector('.payment-field').innerHTML = data.payment || '';
+    document.getElementById('signerName').value = data.signerName || '';
+    if(data.signerDate) document.getElementById('signerDate').value = data.signerDate;
+    if(data.logoSrc){
+      logoImg.src = data.logoSrc;
+      logoImg.style.display = 'block';
+      logoBox.style.display = 'none';
+    } else {
+      logoImg.style.display = 'none';
+      logoBox.style.display = 'flex';
+    }
+    const rect = canvas.getBoundingClientRect();
+    ctx.clearRect(0,0,rect.width,rect.height);
+    hasSig = false;
+    if(data.sigData){
+      const img = new Image();
+      img.onload = function(){ ctx.drawImage(img, 0, 0, rect.width, rect.height); hasSig = true; };
+      img.src = data.sigData;
+    }
+    recalc();
+  }
+
+  function resetToBlank(){
+    applyData({
+      invNum: 'INV-0001', invDate: todayStr(),
+      businessName: 'Your Business Name', businessAddr: '',
+      custName: 'Customer Name', custAddr: '',
+      items: [{desc:'',qty:1,rate:0},{desc:'',qty:1,rate:0}],
+      vatOn:false, vatRate:7.5, currency:'₦', payment:'',
+      signerName:'', signerDate:'', sigData:null
+    });
+  }
+
+  // Draft autosave (debounced) — restores your in-progress invoice if you close and reopen the file
+  let draftTimer = null;
+  function scheduleDraftSave(){
+    if(!storageAvailable) return;
+    clearTimeout(draftTimer);
+    draftTimer = setTimeout(function(){
+      localStorage.setItem(LS_DRAFT, JSON.stringify(gatherData()));
+    }, 500);
+  }
+  document.addEventListener('input', scheduleDraftSave);
+  document.addEventListener('change', scheduleDraftSave);
+  canvas.addEventListener('mouseup', scheduleDraftSave);
+  canvas.addEventListener('touchend', scheduleDraftSave);
+
+  // Save current invoice into history
+  document.getElementById('saveBtn').addEventListener('click', function(){
+    if(!storageAvailable){
+      alert('Your browser is blocking local storage (private/incognito mode, or storage disabled), so saved history isn\'t available right now. You can still export to PDF.');
+      return;
+    }
+    const data = gatherData();
+    const id = data.invNum || ('untitled-' + Date.now());
+    const all = readInvoices();
+    if(all[id] && !confirm('An invoice numbered "'+id+'" is already saved. Overwrite it?')) return;
+    all[id] = data;
+    writeInvoices(all);
+    renderHistory();
+    const btn = document.getElementById('saveBtn');
+    const orig = btn.textContent;
+    btn.textContent = 'Saved ✓';
+    setTimeout(function(){ btn.textContent = orig; }, 1200);
+  });
+
+  // History panel
+  const histOverlay = document.getElementById('histOverlay');
+  const histList = document.getElementById('histList');
+  const histEmpty = document.getElementById('histEmpty');
+
+  function renderHistory(){
+    const all = readInvoices();
+    const ids = Object.keys(all).sort(function(a,b){ return (all[b].savedAt||0) - (all[a].savedAt||0); });
+    histList.innerHTML = '';
+    histEmpty.style.display = ids.length ? 'none' : 'block';
+    ids.forEach(function(id){
+      const d = all[id];
+      const row = document.createElement('div');
+      row.className = 'hist-row';
+      row.innerHTML =
+        '<div class="hist-row-info">'+
+          '<div class="hi-top">'+ escapeHtml(id) +' <span class="hi-total">'+ escapeHtml(d.currency||'$') + (d.total||'0.00') +'</span></div>'+
+          '<div class="hi-sub">'+ escapeHtml(d.custName||'—') +' · '+ escapeHtml(d.invDate||'') +'</div>'+
+        '</div>'+
+        '<div class="hist-row-actions">'+
+          '<button class="btn btn-small btn-outline hi-load">Load</button>'+
+          '<button class="btn btn-small btn-danger-outline hi-del">Delete</button>'+
+        '</div>';
+      row.querySelector('.hi-load').addEventListener('click', function(){
+        applyData(d);
+        histOverlay.classList.remove('open');
+      });
+      row.querySelector('.hi-del').addEventListener('click', function(){
+        if(!confirm('Delete invoice "'+id+'" from history? This cannot be undone.')) return;
+        const cur = readInvoices();
+        delete cur[id];
+        writeInvoices(cur);
+        renderHistory();
+      });
+      histList.appendChild(row);
+    });
+  }
+  function escapeHtml(s){
+    return String(s).replace(/[&<>"']/g, function(c){
+      return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];
+    });
+  }
+
+  document.getElementById('historyBtn').addEventListener('click', function(){
+    renderHistory();
+    histOverlay.classList.add('open');
+  });
+  document.getElementById('histCloseBtn').addEventListener('click', function(){
+    histOverlay.classList.remove('open');
+  });
+  histOverlay.addEventListener('click', function(e){
+    if(e.target === histOverlay) histOverlay.classList.remove('open');
+  });
+
+  // New invoice
+  document.getElementById('newBtn').addEventListener('click', function(){
+    if(!confirm('Start a new invoice? Unsaved changes on this invoice will be cleared (saved history is kept).')) return;
+    resetToBlank();
+  });
+
+  // On load: restore the last in-progress draft, if any
+  if(storageAvailable){
+    try{
+      const draft = JSON.parse(localStorage.getItem(LS_DRAFT) || 'null');
+      if(draft) applyData(draft);
+    }catch(e){}
+  }
+
+  recalc();
+})();
+</script>
+</body>
+</html>
